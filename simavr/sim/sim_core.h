@@ -90,17 +90,11 @@ void avr_dump_state(avr_t * avr);
 
 #endif
 
-/**
- * Reconstructs the SREG value from avr->sreg into dst.
- */
-#define READ_SREG_INTO(avr, dst) { \
-			dst = 0; \
-			for (int i = 0; i < 8; i++) \
-				if (avr->sreg[i] > 1) { \
-					printf("** Invalid SREG!!\n"); \
-				} else if (avr->sreg[i]) \
-					dst |= (1 << i); \
-		}
+#define SREG_BIT(_b) 		(avr->data[R_SREG] & (1 << (_b)))
+#define SREG_SETBIT(_b, _v) 	avr->data[R_SREG] = (avr->data[R_SREG] & ~(1 << (_b))) | (!!(_v) << (_b));
+
+#define READ_SREG_INTO(avr, dst) \
+	dst = avr->data[R_SREG]
 
 static inline void avr_sreg_set(avr_t * avr, uint8_t flag, uint8_t ival)
 {
@@ -112,13 +106,13 @@ static inline void avr_sreg_set(avr_t * avr, uint8_t flag, uint8_t ival)
 
 	if (flag == S_I) {
 		if (ival) {
-			if (!avr->sreg[S_I])
+			if (!SREG_BIT(S_I))
 				avr->interrupt_state = -2;
 		} else
 			avr->interrupt_state = 0;
 	}
 
-	avr->sreg[flag] = ival;
+	SREG_SETBIT(flag, ival);
 }
 
 /**

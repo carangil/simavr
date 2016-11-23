@@ -30,7 +30,8 @@
 #include "avr_watchdog.h"
 
 // SREG bit names
-const char * _sreg_bit_name = "cznvshti";
+static const char * _sreg_bit_name __attribute__((unused));
+static const char * _sreg_bit_name = "cznvshti";
 
 /*
  * Handle "touching" registers, marking them changed.
@@ -80,7 +81,7 @@ int donttrace = 0;
 #define SREG() if (avr->trace && donttrace == 0) {\
 	printf("%04x: \t\t\t\t\t\t\t\t\tSREG = ", avr->pc); \
 	for (int _sbi = 0; _sbi < 8; _sbi++)\
-		printf("%c", avr->sreg[_sbi] ? toupper(_sreg_bit_name[_sbi]) : '.');\
+		printf("%c", SREG_BIT(_sbi) ? toupper(_sreg_bit_name[_sbi]) : '.');\
 	printf("\n");\
 }
 
@@ -244,14 +245,7 @@ static inline void _avr_set_ram(avr_t * avr, uint16_t addr, uint8_t v)
  */
 static inline uint8_t _avr_get_ram(avr_t * avr, uint16_t addr)
 {
-	if (addr == R_SREG) {
-		/*
-		 * SREG is special it's reconstructed when read
-		 * while the core itself uses the "shortcut" array
-		 */
-		READ_SREG_INTO(avr, avr->data[R_SREG]);
-
-	} else if (addr > 31 && addr < 31 + MAX_IOs) {
+	if (addr > 31 && addr < 31 + MAX_IOs) {
 		avr_io_addr_t io = AVR_DATA_TO_IO(addr);
 
 		if (avr->io[io].r.c)
@@ -485,17 +479,17 @@ void avr_dump_state(avr_t * avr)
 static  void
 _avr_flags_zns (struct avr_t * avr, uint8_t res)
 {
-	avr->sreg[S_Z] = res == 0;
-	avr->sreg[S_N] = (res >> 7) & 1;
-	avr->sreg[S_S] = avr->sreg[S_N] ^ avr->sreg[S_V];
+	SREG_SETBIT(S_Z, res == 0);
+	SREG_SETBIT(S_N, (res >> 7) & 1);
+	SREG_SETBIT(S_S, SREG_BIT(S_N) ^ SREG_BIT(S_V));
 }
 
 static  void
 _avr_flags_zns16 (struct avr_t * avr, uint16_t res)
 {
-	avr->sreg[S_Z] = res == 0;
-	avr->sreg[S_N] = (res >> 15) & 1;
-	avr->sreg[S_S] = avr->sreg[S_N] ^ avr->sreg[S_V];
+	SREG_SETBIT(S_Z, res == 0);
+	SREG_SETBIT(S_N, (res >> 15) & 1);
+	SREG_SETBIT(S_S, SREG_BIT(S_N) ^ SREG_BIT(S_V));
 }
 
 static  void
@@ -503,11 +497,11 @@ _avr_flags_add_zns (struct avr_t * avr, uint8_t res, uint8_t rd, uint8_t rr)
 {
 	/* carry & half carry */
 	uint8_t add_carry = (rd & rr) | (rr & ~res) | (~res & rd);
-	avr->sreg[S_H] = (add_carry >> 3) & 1;
-	avr->sreg[S_C] = (add_carry >> 7) & 1;
+	SREG_SETBIT(S_H, (add_carry >> 3) & 1);
+	SREG_SETBIT(S_C, (add_carry >> 7) & 1);
 
 	/* overflow */
-	avr->sreg[S_V] = (((rd & rr & ~res) | (~rd & ~rr & res)) >> 7) & 1;
+	SREG_SETBIT(S_V, (((rd & rr & ~res) | (~rd & ~rr & res)) >> 7) & 1);
 
 	/* zns */
 	_avr_flags_zns(avr, res);
@@ -519,11 +513,11 @@ _avr_flags_sub_zns (struct avr_t * avr, uint8_t res, uint8_t rd, uint8_t rr)
 {
 	/* carry & half carry */
 	uint8_t sub_carry = (~rd & rr) | (rr & res) | (res & ~rd);
-	avr->sreg[S_H] = (sub_carry >> 3) & 1;
-	avr->sreg[S_C] = (sub_carry >> 7) & 1;
+	SREG_SETBIT(S_H, (sub_carry >> 3) & 1);
+	SREG_SETBIT(S_C, (sub_carry >> 7) & 1);
 
 	/* overflow */
-	avr->sreg[S_V] = (((rd & ~rr & ~res) | (~rd & rr & res)) >> 7) & 1;
+	SREG_SETBIT(S_V, (((rd & ~rr & ~res) | (~rd & rr & res)) >> 7) & 1);
 
 	/* zns */
 	_avr_flags_zns(avr, res);
@@ -533,9 +527,9 @@ static  void
 _avr_flags_Rzns (struct avr_t * avr, uint8_t res)
 {
 	if (res)
-		avr->sreg[S_Z] = 0;
-	avr->sreg[S_N] = (res >> 7) & 1;
-	avr->sreg[S_S] = avr->sreg[S_N] ^ avr->sreg[S_V];
+		SREG_SETBIT(S_Z, 0);
+	SREG_SETBIT(S_N, (res >> 7) & 1);
+	SREG_SETBIT(S_S, SREG_BIT(S_N) ^ SREG_BIT(S_V));
 }
 
 static  void
@@ -543,11 +537,11 @@ _avr_flags_sub_Rzns (struct avr_t * avr, uint8_t res, uint8_t rd, uint8_t rr)
 {
 	/* carry & half carry */
 	uint8_t sub_carry = (~rd & rr) | (rr & res) | (res & ~rd);
-	avr->sreg[S_H] = (sub_carry >> 3) & 1;
-	avr->sreg[S_C] = (sub_carry >> 7) & 1;
+	SREG_SETBIT(S_H, (sub_carry >> 3) & 1);
+	SREG_SETBIT(S_C, (sub_carry >> 7) & 1);
 
 	/* overflow */
-	avr->sreg[S_V] = (((rd & ~rr & ~res) | (~rd & rr & res)) >> 7) & 1;
+	SREG_SETBIT(S_V, (((rd & ~rr & ~res) | (~rd & rr & res)) >> 7) & 1);
 
 	_avr_flags_Rzns(avr, res);
 }
@@ -555,26 +549,26 @@ _avr_flags_sub_Rzns (struct avr_t * avr, uint8_t res, uint8_t rd, uint8_t rr)
 static  void
 _avr_flags_zcvs (struct avr_t * avr, uint8_t res, uint8_t vr)
 {
-	avr->sreg[S_Z] = res == 0;
-	avr->sreg[S_C] = vr & 1;
-	avr->sreg[S_V] = avr->sreg[S_N] ^ avr->sreg[S_C];
-	avr->sreg[S_S] = avr->sreg[S_N] ^ avr->sreg[S_V];
+	SREG_SETBIT(S_Z, res == 0);
+	SREG_SETBIT(S_C, vr & 1);
+	SREG_SETBIT(S_V, SREG_BIT(S_N) ^ SREG_BIT(S_C));
+	SREG_SETBIT(S_S, SREG_BIT(S_N) ^ SREG_BIT(S_V));
 }
 
 static  void
 _avr_flags_zcnvs (struct avr_t * avr, uint8_t res, uint8_t vr)
 {
-	avr->sreg[S_Z] = res == 0;
-	avr->sreg[S_C] = vr & 1;
-	avr->sreg[S_N] = res >> 7;
-	avr->sreg[S_V] = avr->sreg[S_N] ^ avr->sreg[S_C];
-	avr->sreg[S_S] = avr->sreg[S_N] ^ avr->sreg[S_V];
+	SREG_SETBIT(S_Z, res == 0);
+	SREG_SETBIT(S_C, vr & 1);
+	SREG_SETBIT(S_N, res >> 7);
+	SREG_SETBIT(S_V, SREG_BIT(S_N) ^ SREG_BIT(S_C));
+	SREG_SETBIT(S_S, SREG_BIT(S_N) ^ SREG_BIT(S_V));
 }
 
 static  void
 _avr_flags_znv0s (struct avr_t * avr, uint8_t res)
 {
-	avr->sreg[S_V] = 0;
+	SREG_SETBIT(S_V, 0);
 	_avr_flags_zns(avr, res);
 }
 
@@ -644,7 +638,7 @@ run_one_again:
 					switch (opcode & 0xfc00) {
 						case 0x0400: {	// CPC -- Compare with carry -- 0000 01rd dddd rrrr
 							get_vd5_vr5(opcode);
-							uint8_t res = vd - vr - avr->sreg[S_C];
+							uint8_t res = vd - vr - SREG_BIT(S_C);
 							STATE("cpc %s[%02x], %s[%02x] = %02x\n", avr_regname(d), vd, avr_regname(r), vr, res);
 							_avr_flags_sub_Rzns(avr, res, vd, vr);
 							SREG();
@@ -663,7 +657,7 @@ run_one_again:
 						}	break;
 						case 0x0800: {	// SBC -- Subtract with carry -- 0000 10rd dddd rrrr
 							get_vd5_vr5(opcode);
-							uint8_t res = vd - vr - avr->sreg[S_C];
+							uint8_t res = vd - vr - SREG_BIT(S_C);
 							STATE("sbc %s[%02x], %s[%02x] = %02x\n", avr_regname(d), avr->data[d], avr_regname(r), avr->data[r], res);
 							_avr_set_r(avr, d, res);
 							_avr_flags_sub_Rzns(avr, res, vd, vr);
@@ -684,8 +678,8 @@ run_one_again:
 									int16_t res = ((int8_t)avr->data[r]) * ((int8_t)avr->data[d]);
 									STATE("muls %s[%d], %s[%02x] = %d\n", avr_regname(d), ((int8_t)avr->data[d]), avr_regname(r), ((int8_t)avr->data[r]), res);
 									_avr_set_r16le(avr, 0, res);
-									avr->sreg[S_C] = (res >> 15) & 1;
-									avr->sreg[S_Z] = res == 0;
+									SREG_SETBIT(S_C, (res >> 15) & 1);
+									SREG_SETBIT(S_Z, res == 0);
 									cycle++;
 									SREG();
 								}	break;
@@ -723,8 +717,8 @@ run_one_again:
 									cycle++;
 									STATE("%s %s[%d], %s[%02x] = %d\n", name, avr_regname(d), ((int8_t)avr->data[d]), avr_regname(r), ((int8_t)avr->data[r]), res);
 									_avr_set_r16le(avr, 0, res);
-									avr->sreg[S_C] = c;
-									avr->sreg[S_Z] = res == 0;
+									SREG_SETBIT(S_C, c);
+									SREG_SETBIT(S_Z, res == 0);
 									SREG();
 								}	break;
 								default: _avr_invalid_opcode(avr);
@@ -765,7 +759,7 @@ run_one_again:
 				}	break;
 				case 0x1c00: {	// ADD -- Add with carry -- 0001 11rd dddd rrrr
 					get_vd5_vr5(opcode);
-					uint8_t res = vd + vr + avr->sreg[S_C];
+					uint8_t res = vd + vr + SREG_BIT(S_C);
 					if (r == d) {
 						STATE("rol %s[%02x] = %02x\n", avr_regname(d), avr->data[d], res);
 					} else {
@@ -833,7 +827,7 @@ run_one_again:
 
 		case 0x4000: {	// SBCI -- Subtract Immediate With Carry -- 0100 kkkk hhhh kkkk
 			get_vh4_k8(opcode);
-			uint8_t res = vh - k - avr->sreg[S_C];
+			uint8_t res = vh - k - SREG_BIT(S_C);
 			STATE("sbci %s[%02x], 0x%02x = %02x\n", avr_regname(h), vh, k, res);
 			_avr_set_r(avr, h, res);
 			_avr_flags_sub_Rzns(avr, res, vh, k);
@@ -913,7 +907,7 @@ run_one_again:
 			if ((opcode & 0xff0f) == 0x9408) {
 				get_sreg_bit(opcode);
 				STATE("%s%c\n", opcode & 0x0080 ? "cl" : "se", _sreg_bit_name[b]);
-				avr_sreg_set(avr, b, (opcode & 0x0080) == 0);
+				SREG_SETBIT(b, (opcode & 0x0080) == 0);
 				SREG();
 			} else switch (opcode) {
 				case 0x9588: { // SLEEP -- 1001 0101 1000 1000
@@ -922,7 +916,7 @@ run_one_again:
 					 * Without this check, it was possible to incorrectly enter a state
 					 * in which the cpu was sleeping and interrupts were disabled. For more
 					 * details, see the commit message. */
-					if (!avr_has_pending_interrupts(avr) || !avr->sreg[S_I])
+					if (!avr_has_pending_interrupts(avr) || !SREG_BIT(S_I))
 						avr->state = cpu_Sleeping;
 				}	break;
 				case 0x9598: { // BREAK -- 1001 0101 1001 1000
@@ -962,10 +956,12 @@ run_one_again:
 					cycle++;
 					TRACE_JUMP();
 				}	break;
-				case 0x9518: 	// RETI -- Return from Interrupt -- 1001 0101 0001 1000
-					avr_sreg_set(avr, S_I, 1);
-					avr_interrupt_reti(avr);
-				case 0x9508: {	// RET -- Return -- 1001 0101 0000 1000
+				case 0x9508: 	// RET -- Return -- 1001 0101 0000 1000
+				case 0x9518: {	// RETI -- Return from Interrupt -- 1001 0101 0001 1000
+					if (opcode == 0x9518) {
+						avr_sreg_set(avr, S_I, 1);
+						avr_interrupt_reti(avr);
+					}
 					new_pc = _avr_pop_addr(avr);
 					cycle += 1 + avr->address_size;
 					STATE("ret%s\n", opcode & 0x10 ? "i" : "");
@@ -1138,7 +1134,7 @@ run_one_again:
 							STATE("com %s[%02x] = %02x\n", avr_regname(d), vd, res);
 							_avr_set_r(avr, d, res);
 							_avr_flags_znv0s(avr, res);
-							avr->sreg[S_C] = 1;
+							SREG_SETBIT(S_C, 1);
 							SREG();
 						}	break;
 						case 0x9401: {	// NEG -- Two's Complement -- 1001 010d dddd 0001
@@ -1146,9 +1142,9 @@ run_one_again:
 							uint8_t res = 0x00 - vd;
 							STATE("neg %s[%02x] = %02x\n", avr_regname(d), vd, res);
 							_avr_set_r(avr, d, res);
-							avr->sreg[S_H] = ((res >> 3) | (vd >> 3)) & 1;
-							avr->sreg[S_V] = res == 0x80;
-							avr->sreg[S_C] = res != 0;
+							SREG_SETBIT(S_H, ((res >> 3) | (vd >> 3)) & 1);
+							SREG_SETBIT(S_V, res == 0x80);
+							SREG_SETBIT(S_C, res != 0);
 							_avr_flags_zns(avr, res);
 							SREG();
 						}	break;
@@ -1163,7 +1159,7 @@ run_one_again:
 							uint8_t res = vd + 1;
 							STATE("inc %s[%02x] = %02x\n", avr_regname(d), vd, res);
 							_avr_set_r(avr, d, res);
-							avr->sreg[S_V] = res == 0x80;
+							SREG_SETBIT(S_V, res == 0x80);
 							_avr_flags_zns(avr, res);
 							SREG();
 						}	break;
@@ -1180,13 +1176,13 @@ run_one_again:
 							uint8_t res = vd >> 1;
 							STATE("lsr %s[%02x]\n", avr_regname(d), vd);
 							_avr_set_r(avr, d, res);
-							avr->sreg[S_N] = 0;
+							SREG_SETBIT(S_N, 0);
 							_avr_flags_zcvs(avr, res, vd);
 							SREG();
 						}	break;
 						case 0x9407: {	// ROR -- Rotate Right -- 1001 010d dddd 0111
 							get_vd5(opcode);
-							uint8_t res = (avr->sreg[S_C] ? 0x80 : 0) | vd >> 1;
+							uint8_t res = (SREG_BIT(S_C) ? 0x80 : 0) | vd >> 1;
 							STATE("ror %s[%02x]\n", avr_regname(d), vd);
 							_avr_set_r(avr, d, res);
 							_avr_flags_zcnvs(avr, res, vd);
@@ -1197,7 +1193,7 @@ run_one_again:
 							uint8_t res = vd - 1;
 							STATE("dec %s[%02x] = %02x\n", avr_regname(d), vd, res);
 							_avr_set_r(avr, d, res);
-							avr->sreg[S_V] = res == 0x7f;
+							SREG_SETBIT(S_V, res == 0x7f);
 							_avr_flags_zns(avr, res);
 							SREG();
 						}	break;
@@ -1231,8 +1227,8 @@ run_one_again:
 									uint16_t res = vp + k;
 									STATE("adiw %s:%s[%04x], 0x%02x\n", avr_regname(p), avr_regname(p + 1), vp, k);
 									_avr_set_r16le_hl(avr, p, res);
-									avr->sreg[S_V] = ((~vp & res) >> 15) & 1;
-									avr->sreg[S_C] = ((~res & vp) >> 15) & 1;
+									SREG_SETBIT(S_V, ((~vp & res) >> 15) & 1);
+									SREG_SETBIT(S_C, ((~res & vp) >> 15) & 1);
 									_avr_flags_zns16(avr, res);
 									SREG();
 									cycle++;
@@ -1242,8 +1238,8 @@ run_one_again:
 									uint16_t res = vp - k;
 									STATE("sbiw %s:%s[%04x], 0x%02x\n", avr_regname(p), avr_regname(p + 1), vp, k);
 									_avr_set_r16le_hl(avr, p, res);
-									avr->sreg[S_V] = ((vp & ~res) >> 15) & 1;
-									avr->sreg[S_C] = ((res & ~vp) >> 15) & 1;
+									SREG_SETBIT(S_V, ((vp & ~res) >> 15) & 1);
+									SREG_SETBIT(S_C, ((res & ~vp) >> 15) & 1);
 									_avr_flags_zns16(avr, res);
 									SREG();
 									cycle++;
@@ -1294,8 +1290,8 @@ run_one_again:
 											STATE("mul %s[%02x], %s[%02x] = %04x\n", avr_regname(d), vd, avr_regname(r), vr, res);
 											cycle++;
 											_avr_set_r16le(avr, 0, res);
-											avr->sreg[S_Z] = res == 0;
-											avr->sreg[S_C] = (res >> 15) & 1;
+											SREG_SETBIT(S_Z, res == 0);
+											SREG_SETBIT(S_C, (res >> 15) & 1);
 											SREG();
 										}	break;
 										default: _avr_invalid_opcode(avr);
@@ -1358,11 +1354,11 @@ run_one_again:
 					int16_t o = ((int16_t)(opcode << 6)) >> 9; // offset
 					uint8_t s = opcode & 7;
 					int set = (opcode & 0x0400) == 0;		// this bit means BRXC otherwise BRXS
-					int branch = (avr->sreg[s] && set) || (!avr->sreg[s] && !set);
 					const char *names[2][8] = {
 							{ "brcc", "brne", "brpl", "brvc", NULL, "brhc", "brtc", "brid"},
 							{ "brcs", "breq", "brmi", "brvs", NULL, "brhs", "brts", "brie"},
 					};
+					int branch = (SREG_BIT(s) && set) || (!SREG_BIT(s) && !set);
 					if (names[set][s]) {
 						STATE("%s .%d [%04x]\t; Will%s branch\n", names[set][s], o, new_pc + (o << 1), branch ? "":" not");
 					} else {
@@ -1376,7 +1372,7 @@ run_one_again:
 				case 0xf800:
 				case 0xf900: {	// BLD -- Bit Store from T into a Bit in Register -- 1111 100d dddd 0bbb
 					get_vd5_s3_mask(opcode);
-					uint8_t v = (vd & ~mask) | (avr->sreg[S_T] ? mask : 0);
+					uint8_t v = (vd & ~mask) | (SREG_BIT(S_T) ? mask : 0);
 					STATE("bld %s[%02x], 0x%02x = %02x\n", avr_regname(d), vd, mask, v);
 					_avr_set_r(avr, d, v);
 				}	break;
@@ -1384,7 +1380,7 @@ run_one_again:
 				case 0xfb00:{	// BST -- Bit Store into T from bit in Register -- 1111 101d dddd 0bbb
 					get_vd5_s3(opcode)
 					STATE("bst %s[%02x], 0x%02x\n", avr_regname(d), vd, 1 << s);
-					avr->sreg[S_T] = (vd >> s) & 1;
+					SREG_SETBIT(S_T, (vd >> s) & 1);
 					SREG();
 				}	break;
 				case 0xfc00:

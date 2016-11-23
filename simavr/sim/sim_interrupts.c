@@ -139,7 +139,7 @@ avr_raise_interrupt(
 
 		avr_int_pending_write(&table->pending, vector);
 
-		if (avr->sreg[S_I] && avr->interrupt_state == 0)
+		if (SREG_BIT(S_I) && avr->interrupt_state == 0)
 			avr->interrupt_state = 1;
 		if (avr->state == cpu_Sleeping) {
 			if (vector->trace)
@@ -226,7 +226,7 @@ void
 avr_service_interrupts(
 		avr_t * avr)
 {
-	if (!avr->sreg[S_I] || !avr->interrupt_state)
+	if (!SREG_BIT(S_I) || !avr->interrupt_state)
 		return;
 
 	if (avr->interrupt_state < 0) {

@@ -22,7 +22,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#ifdef _MSC_VER
 #include "vs-hacks.h"
+#endif
 #include "sim_irq.h"
 
 

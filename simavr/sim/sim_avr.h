@@ -26,8 +26,10 @@
 extern "C" {
 #endif
 
-
+#ifdef _MSC_VER
 #include "vs-hacks.h"
+#endif
+
 #include "sim_irq.h"
 #include "sim_interrupts.h"
 #include "sim_cmds.h"

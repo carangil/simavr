@@ -31,10 +31,14 @@ along with simavr.  If not, see <http://www.gnu.org/licenses/>.
 #include "sim_core.h"
 #include "sim_gdb.h"
 #include "sim_hex.h"
+#include "sim_io.h"
+#include "avr_ioport.h"
 
 //#include "sim_network.h"
 #include "avr_uart.h"
 #include "vs_sim_core_decl.h"
+
+#include <conio.h>
 
 void display_usage(char * app)
 {
@@ -84,19 +88,24 @@ struct avr_irq_t * irq,
 	printf("%c", value);
 }
 struct avr_irq_t* irq_uart;
-const char* names[] = { "serial_in", "serial_out", NULL };
+const char* names[] = { "s1", "s2", "s3","s4", NULL };
+
+
+
 void init_uart_handler(struct avr_t* avr) {
 
-	irq_uart = avr_alloc_irq(&avr->irq_pool, 0, 2, names);
+	irq_uart = avr_alloc_irq(&avr->irq_pool, 0, 4, names);
 
 	avr_irq_register_notify(irq_uart, uart_tx_hook, NULL);
 
-	avr_irq_t * src = avr_io_getirq(avr, AVR_IOCTL_UART_GETIRQ('0'), UART_IRQ_OUTPUT);
-	avr_irq_t * dst = avr_io_getirq(avr, AVR_IOCTL_UART_GETIRQ('0'), UART_IRQ_INPUT);
+	avr_irq_t * tx_irq = avr_io_getirq(avr, AVR_IOCTL_UART_GETIRQ('0'), UART_IRQ_OUTPUT);
+	avr_connect_irq(tx_irq, irq_uart +0 ); 
 
-	avr_connect_irq(src, irq_uart);
-	avr_connect_irq(irq_uart + 1, dst);
 
+	avr_irq_t * rx_irq = avr_io_getirq(avr, AVR_IOCTL_UART_GETIRQ('0'), UART_IRQ_INPUT);
+	avr_connect_irq( irq_uart + 1, rx_irq);
+
+	
 }
 
 /* DEFAULTS */
@@ -160,6 +169,10 @@ int main(int argc, char *argv[])
 		else if (argv[pi][0] != '-') {
 			char * filename = argv[pi];
 			char * suffix = strrchr(filename, '.');
+
+			char* flash = NULL;
+			int flashsize = 0;
+
 			if (suffix && !strcasecmp(suffix, ".hex")) {
 				if (!name[0] || !f_cpu) {
 					fprintf(stderr, "%s: -mcu and -freq are mandatory to load .hex files\n", argv[0]);
@@ -172,13 +185,37 @@ int main(int argc, char *argv[])
 						argv[0], argv[pi]);
 					exit(1);
 				}
-				printf("Loaded %d section of ihex\n", cnt);
+			
+
+				printf("Loaded %d section of ihex, calculating top address\n", cnt);
+				for (int ci = 0;ci < cnt;ci++) {
+					int tsize = chunk[ci].size + chunk[ci].baseaddr;
+
+					if (chunk[ci].baseaddr > 1024 * 1024) //skip the eeprom sections
+						continue;
+
+					if (tsize > flashsize)
+						flashsize = tsize;
+				}
+				printf(" Maximum flash address in hex segments is %d\n", flashsize);
+
+				flash = malloc(flashsize);
+				if (!flash)
+				{
+					fprintf(stderr, "Can't allocate flash %d bytes\n", flashsize);
+					exit(1);
+				}
+
+				f.flash = flash;
+				f.flashbase = 0;
+				f.flashsize = flashsize;
+
 				for (int ci = 0; ci < cnt; ci++) {
+					
 					if (chunk[ci].baseaddr < (1 * 1024 * 1024)) {
-						f.flash = chunk[ci].data;
-						f.flashsize = chunk[ci].size;
-						f.flashbase = chunk[ci].baseaddr;
-						printf("Load HEX flash %08x, %d\n", f.flashbase, f.flashsize);
+						memcpy(f.flash + chunk[ci].baseaddr, chunk[ci].data, chunk[ci].size);
+						printf("Load HEX flash %08x, %d\n", chunk[ci].baseaddr, chunk[ci].size);
+						//break;
 					}
 					else if (chunk[ci].baseaddr >= AVR_SEGMENT_OFFSET_EEPROM ||
 						chunk[ci].baseaddr + loadBase >= AVR_SEGMENT_OFFSET_EEPROM) {
@@ -218,8 +255,11 @@ int main(int argc, char *argv[])
 	avr_load_firmware(avr, &f);
 	if (f.flashbase) {
 		printf("Attempted to load a bootloader at %04x\n", f.flashbase);
-		avr->pc = f.flashbase;
+	//	avr->pc = f.flashbase;
 	}
+//	f.flashbase = 0;
+//	avr-> pc = 0;
+
 	avr->log = (log > LOG_TRACE ? LOG_TRACE : log);
 	avr->trace = trace;
 	for (int ti = 0; ti < trace_vectors_count; ti++) {
@@ -242,10 +282,120 @@ int main(int argc, char *argv[])
 	signal(SIGINT, sig_int);
 	signal(SIGTERM, sig_int);
 
+	int cnt = 0;
+
+	
+	unsigned char xram[128 * 1024]; //our xram
+	unsigned char addrhigh=0xEE;
+	unsigned int bank;
+	unsigned char WEWENTHIGH = 0;
+
 	for (;;) {
+				
 		int state = avr_run(avr);
+
 		if (state == cpu_Done || state == cpu_Crashed)
 			break;
+
+		cnt++;
+
+		avr_ioport_state_t porta;
+		avr_ioport_state_t portb;
+		avr_ioport_state_t portc;
+		avr_ioport_state_t portd;
+
+		avr_ioctl(avr, AVR_IOCTL_IOPORT_GETSTATE('A'), &porta);
+		avr_ioctl(avr, AVR_IOCTL_IOPORT_GETSTATE('B'), &portb);
+		avr_ioctl(avr, AVR_IOCTL_IOPORT_GETSTATE('C'), &portc);
+		avr_ioctl(avr, AVR_IOCTL_IOPORT_GETSTATE('D'), &portd);
+
+
+		int WE = portd.port & (1<<6);
+		int OE = portd.port & (1<<2);
+		int PL = portd.port & (1<<3);
+		
+
+		if (porta.port & (1 <<5)) //bank select bit
+			bank = 1;
+		else
+			bank = 0;
+
+		
+
+		if (PL)
+			addrhigh = portb.port;  //latch high address
+
+		if (!WE && WEWENTHIGH) {
+			printf(" Write at %x %x %x  (%x)\n", bank, addrhigh, portb.port, portc.port);
+			xram[ (bank<<16) | (addrhigh << 8) | portb.port] = portc.port;
+		//	getch();
+		} 
+
+
+		avr_ioport_external_t p;
+		
+		if (!OE) {
+			
+			p.mask = 0xff; //we take all the bits
+			p.value = xram[ (bank << 16) |  (addrhigh << 8) | portb.port];
+
+		}
+		else {
+			p.mask = 0x0; //not asserting anything on data bus
+		}
+		avr_ioctl(avr, AVR_IOCTL_IOPORT_SET_EXTERNAL('C'), &p);
+
+
+		WEWENTHIGH |= WE; //goes high if WE ever went high
+		
+		if (!(cnt & 0xFF)) {
+
+			int p;
+			for (p = 'D';p <= 'D';p++) {
+		
+
+				//if (port.port != 0) {
+				//	printf("%d %c PORT: %d DDR:%d %d\n", r, port.name, port.port, port.ddr, port.pin);
+				//}
+			}
+		
+		
+			if (kbhit()) {
+				char c = getch();
+
+				if (c == 'x') {
+					
+					
+					avr_ioport_external_t p;
+					printf("set\n");
+					p.mask = 0xff;
+					p.value = 111;
+					//p.name = 'D';
+
+				//	avr_ioctl(avr, AVR_IOCTL_IOPORT_SET_EXTERNAL('D'), &p);
+
+				}
+
+				if (c == 'y') {
+					
+					
+					avr_ioport_external_t p;
+					printf("set\n");
+					p.mask = 0xff;
+					p.value = 222;
+					//p.name = 'D';
+
+					avr_ioctl(avr, AVR_IOCTL_IOPORT_SET_EXTERNAL('D'), &p);
+
+				}
+				
+				avr_raise_irq(irq_uart+1, c);
+
+			}
+		}
+
+		
+
 	}
 
 	avr_terminate(avr);

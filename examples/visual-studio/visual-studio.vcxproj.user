@@ -1,7 +1,10 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <LocalDebuggerCommandArguments>-f 20000000 -m atmega644   atmel-studio-avr-serial-output\serial-out\Release\serial-out.hex</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>-f 20000000 -m atmega644   D:\projects\avr\cat644-gitrepo\cat644\kittyos\kittyos\Debug\kittyos.hex </LocalDebuggerCommandArguments>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
+  </PropertyGroup>
+  <PropertyGroup>
+    <ShowAllFiles>true</ShowAllFiles>
   </PropertyGroup>
 </Project>

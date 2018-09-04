@@ -31,8 +31,15 @@ avr_ioport_read(
 		void * param)
 {
 	avr_ioport_t * p = (avr_ioport_t *)param;
+
+
+	//update port pin to let external pull value override the external pull mask bits
+	avr->data[p->r_pin] = (p->external.pull_value & p->external.pull_mask) | (avr->data[p->r_pin] & ~p->external.pull_mask);
+
 	uint8_t ddr = avr->data[p->r_ddr];
 	uint8_t v = (avr->data[p->r_pin] & ~ddr) | (avr->data[p->r_port] & ddr);
+		
+
 	avr->data[addr] = v;
 	// made to trigger potential watchpoints
 	v = avr_core_watch_read(avr, addr);
@@ -207,14 +214,17 @@ avr_ioport_ioctl(
 			 * Return the port state if the IOCTL matches us.
 			 */
 			if (ctl == AVR_IOCTL_IOPORT_GETSTATE(p->name)) {
-				avr_ioport_state_t state = {
-					.name = p->name,
-					.port = avr->data[p->r_port],
-					.ddr = avr->data[p->r_ddr],
-					.pin = avr->data[p->r_pin],
-				};
+				avr_ioport_state_t state;
+				
+			
+				state.name = p->name;
+				state.port = avr->data[p->r_port];
+				state.ddr = avr->data[p->r_ddr];
+				state.pin = avr->data[p->r_pin];
+				
 				if (io_param)
 					*((avr_ioport_state_t*)io_param) = state;
+
 				res = 0;
 			}
 			/*
